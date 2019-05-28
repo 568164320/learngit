@@ -1,0 +1,218 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;" />
+<script>
+	
+	var n =null,id=null,time = null,profit=null,deadline=null,Maxdeadline=null;
+	var Work = new Array();
+	
+	
+	var Value = new Array();
+	for(var i=0;i<200;i+=1)
+	{	
+		Value[i] = new Array();
+		for(var j=0;j<200;j+=1)
+			Value[i][j] = 0;
+	}
+	
+	function GetMaxDeadline()
+	{
+		var max = 0;
+		for (var i = 0; i < n; i+=1)
+		{
+			if (Work[i].deadline > max)
+				max = Work[i].deadline;
+		}	
+		return max;
+	}
+	
+	function max(a,b)
+	{
+		if (a >= b)
+			return a;
+		else return b;
+	}
+	
+	
+	function ArrangeWork()
+	{
+	
+		Maxdeadline = GetMaxDeadline();
+		
+		//填表,其中第一行和第一列全为0  
+		for (var i = 0; i <= n; i+=1)
+			Value[i][0] = 0;
+		for (var j = 0; j <= Maxdeadline; j+=1)
+			Value[0][j] = 0;
+		for (var i = 1; i <= n; i+=1)
+		{
+			for (var j = 1; j <= Maxdeadline; j+=1)
+			{
+				if (j >= Work[i - 1].time && Value[i - 1][j - Work[i - 1].time] + Work[i - 1].profit > Value[i - 1][j])
+				{
+					if (j <= Work[i - 1].deadline)
+						Value[i][j] = Value[i - 1][j - Work[i - 1].time] + Work[i - 1].profit;
+					else
+						Value[i][j] = Value[i][j - 1];
+				}
+				else
+				{
+					Value[i][j] = Value[i - 1][j];
+				}
+			}
+		}
+		
+		
+		var result = new Array(n+1);
+	
+		var j = Maxdeadline;
+		for (var i = n; i > 0; i-=1)
+		{
+			if (Value[i][j] > Value[i - 1][j])
+			{
+				result[i - 1] = 1;
+				j = j - Work[i - 1].time;
+			}
+			else
+			{	
+				result[i-1] = 0;
+			}
+		}
+		
+		document.getElementById('result').style.display="block";
+		
+		//输出最佳序列和总价值
+		str = "<br/><a>最佳的工作序列是：";		
+		for (var i = 0; i < n; i+=1)
+		{
+			if (result[i])
+			{
+				str += Work[i].id + "  ";
+			}
+		}
+		str += '</a><br/> <br/>';
+		str += "<a>最后的总价值为：";
+		str += Value[n][Maxdeadline].toString();
+		str += "</a>"
+		document.getElementById('result').innerHTML  = str;
+	}
+	
+	function GetValue()
+	{
+	
+		if(document.getElementById('n').value!="")
+			n = parseInt(document.getElementById('n').value);
+		else
+		{
+			alert('请在文本框输入正确的值！');
+			return;
+		}
+		if(document.getElementById('id').value!="")
+		{
+			id0 = document.getElementById('id').value;
+			id = id0.split(',')
+		}
+		else
+		{
+			alert('请在文本框输入正确的值！');
+			return;
+		}
+		
+		if(document.getElementById('time').value!="")
+		{
+			time0 = document.getElementById('time').value;
+			time = time0.split(',');
+		}
+		else
+		{
+			alert('请在文本框输入正确的值！');
+			return;
+		}
+		
+		if(document.getElementById('deadline').value!="")
+		{
+			deadline0 = document.getElementById('deadline').value;
+			deadline = deadline0.split(',');
+		}
+		else
+		{
+			alert('请在文本框输入正确的值！');
+			return;
+		}
+		
+		if(document.getElementById('profit').value!="")
+		{
+			profit0 = document.getElementById('profit').value;
+			profit = profit0.split(',');
+		}
+		else
+		{
+			alert('请在文本框输入正确的值！');
+			return;
+		}
+		
+		for(var i=0;i<n;i+=1)
+		{
+			var temp = 	{'id':id[i],'time':parseInt(time[i]),'deadline':parseInt(deadline[i]),'profit':parseInt(profit[i])};
+			Work[i] = temp;
+		}
+		
+		
+				//对Work进行排序
+		Work.sort(function(a,b){
+			if (a.deadline < b.deadline)
+				return -1;
+			else if (a.deadline == b.deadline)
+			{
+				if (a.time < b.time)
+					return -1;
+				else return 1;
+			}
+			else
+				return 1;
+		})
+		
+	}
+	
+	
+	
+</script>
+<style>
+</style>
+</head>
+<body>
+<h2 style="margin-left:220px;margin-right:120px;margin-top:20px;">李云烽</h2>
+<div align="center" style="position:absolute; width:540px;height:420px; top:38%;left:50%; font-family:'宋体';margin-left:-270px;margin-top:-210px; border:1px dashed #000"> 
+       
+    <h3>最佳工作序列</h3>
+
+    <div style="margin-left:20px;margin-right:20px;margin-top:-20px;"><h6 style="font-size:14px;font-family:'宋体';">问题：有N件工作，输入每件工作的费时、最后完成的期限及工作的价值，试求可能的一个完成工作序列，使价值和最大</h6>
+<div style="margin-left:20px;margin-right:20px;"><p style="font-size:12px;margin-top:-20px;font-family:'宋体', 'Arial Narrow', Arial, sans-serif">N件工作的不同值用“,”隔开</p></div>
+<table cellspacing="14">
+	<tr>
+		<td>请输入工作件数：</td>
+		<td><input type="text" id="n"></td>
+	</tr>
+	<tr>
+		<td>请分别输入工作的编号:</td>
+		<td><input type="text" id="id"></td>
+	</tr>
+	<tr>
+		<td>请分别输入工作的耗时:</td>
+		<td><input type="text" id="time"></td>
+	</tr>
+	<tr>
+		<td>请分别输入工作的最后完成期限:</td>
+		<td><input type="text" id="deadline"></td>
+	</tr>
+	<tr>
+		<td>请分别输入工作的价值:</td>
+		<td><input type="text" id="profit"></td>
+	</tr>
+</table>
+<button type="button" onclick = "GetValue();ArrangeWork();" style="width:90px;height:35px;margin-top:10px; border:1px solid; background:#FFF; font-size:14px">计算</button>
+</div>
+<div id = "result" style="display:none;text-align:center;background-color:#F0F0F0;width:540px;height:100px;margin-top:30px;">
+</div>
+<body>
+</html>
