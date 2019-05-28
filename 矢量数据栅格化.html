@@ -1,0 +1,921 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>
+        矢量数据栅格化
+    </title>
+    <style>
+         .btn {
+            margin-left: 20px;
+            margin-top: 0px;
+            border-color: grey;
+            border-radius: 3px;
+            background-color: white;
+            /* width: flex; */
+            height: 25px;
+            font-size: 13px;
+        }
+        .result1 {
+            margin-left: 10px;
+            border: 1px solid rgb(80, 50, 252);
+            width: 200px;
+            height: 250px;
+            overflow: auto;
+            margin-top: 5px;
+            padding: 10px;
+            font-family: 宋体;
+            font-size: 15px;
+        }
+        .result2 {
+            margin-left: 10px;
+            border: 1px solid rgb(80, 50, 252);
+            width: 300px;
+            height: 250px;
+            overflow: auto;
+            margin-top: 5px;
+            padding: 10px;
+            font-family: 宋体;
+            font-size: 15px;
+        }
+        .row {
+            display: flex;
+            flex-direction: row;
+        }
+        .column {
+            display: flex;
+            flex-direction: column;
+        }
+        .nav{
+        color:red;
+        border-width:3px;  
+        /*border-style: solid;*/
+        border-left-style:solid;
+        border-top-style:dotted;
+        border-right-style: dashed;
+        border-bottom-style: double;
+        border-left-color: red;
+        border-top-color: green;
+        border-right-color: blue;
+        border-bottom-color: purple;
+    
+       /* border-color: blue;*/
+        width: 100px;
+        height: 40px;
+        background-color: white;
+    
+    }
+    </style>
+</head>
+
+<body>
+    
+        
+        <strong style="margin-left:5px;margin-top:10px;font-family:宋体;font-size:18px;">10170320 李云烽</strong>
+        <div style="font-size:15px;font-family:宋体;display:flex;flex-direction:row;margin-top:10px;" >
+            
+           <div>
+                <strong>请选择需要构建的数据文件：</strong>
+                <input id="File" type="file" multiple="mutifile" />
+           </div>
+           <div style="margin-left:-5%;">
+                <button class="nav" type="button" onclick="get() ">构建多边形</button>
+            </div>
+            <div style="margin-left:2%;">
+                <button class="nav" type="button" onclick="ClearCanvas() ">清除</button>
+            </div>
+        </div>
+        
+        
+    </div>
+    <div class="row" style="  width: 1250px;">
+        <div class="column" style=" width: 350px;">
+            <div style="margin-top:2vh;margin-left:2vw;font-size:15px;font-family:宋体;">原始多边形图像为：</div>
+            <canvas id="canvas1" style="border:1px solid rgb(131, 32, 32);margin-top:1%;margin-left:2vw;"></canvas>
+            <div style="margin-top:2vh;margin-left:2vw;font-size:15px;font-family:宋体;">矢量转栅格结果为：</div>
+            <canvas id="canvas2" style="border:1px solid rgb(131, 32, 32);margin-top:1%;margin-left:2vw;"></canvas>
+        </div>
+       
+        <div class="column" style="margin-left:1vw;">
+            <div style="margin-top:2vh;margin-left:1vw;font-size:15px;font-family:宋体;">左转算法完成后结果为：</div>
+            <div class="result2" id="node">1、结点表：
+
+            </div>
+            <div class="result2" id="nodearc">4、结点-弧段表：
+
+            </div>
+        </div>
+        <div class="column">
+            <div style="margin-top:2vh;margin-left:2vw;font-size:15px;font-family:宋体;visibility:hidden;">t</div>
+            <div class="result2" id="arcnode">2、弧段-结点表：
+
+            </div>
+            <div class="result2" id="polyarc">5、多边形-弧段表：
+
+            </div>
+        </div>
+        <div class="column">
+            <div style="margin-top:2vh;margin-left:2vw;font-size:15px;font-family:宋体;visibility:hidden;">t</div>
+            <div class="result1" id="arcpoly">3、弧段-多边形表：
+
+            </div>
+            <div class="result1" id="island">6、岛关系表：
+
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        var canvas1 = document.getElementById('canvas1');
+        var ctext1 = canvas1.getContext('2d');
+        canvas1.width = 310;
+        canvas1.height = 200;
+        var canvas2 = document.getElementById('canvas2');
+        var ctext2 = canvas2.getContext('2d');
+        canvas2.width = 310;
+        canvas2.height = 200;
+        var times = 1.6;
+        var Node = [];//结点表
+        var allpoints = [];//存储所有的结点
+        var NodeArc = [];//结点-弧段表
+        var ArcNode = [];//弧段-结点表
+        var ArcNodefinal = [];
+        var PolygonArc = [];//多边形-弧段表
+        var PolygonArcTemp = [];//临时多边形-弧段表用于存储点便于判断岛计算面积
+        var ArcPoly = [];//弧段-多边形表
+        var border = {};//外围多边形
+        var island = [];
+        var arcpolytemp = [];
+        var arcpolyfinal = [];
+        // 存储栅格数据的数组50*50，初始化其中的数值均为0
+        var grid = new Array();
+        for (var i = 0; i < 250; i++) {
+            grid[i] = new Array();
+            for (var j = 0; j < 250; j++) {
+                grid[i][j] = 0;
+            }
+        }
+        //读取文件
+        function get() {
+            var files = document.getElementById('File').files;
+            for (var i = 0; i < files.length; i++) {
+                var file = files[i];
+                var reader = new FileReader();
+                reader.readAsText(file);//以文本形式读取文件
+                //成功读取
+                reader.onload = function (e) {
+                    record = this.result;//读取文件
+                    draw(record);//绘制该文件中包含的内容，并构建结点表，结点弧段表，弧段结点表
+                    drawpoint();
+                    SortNodeArc();//将结点弧段表中的每个结点对应的弧段按角度的大小排序，以便构建左转算法
+                    LeftTurnAlgorithm();
+                    CreatePolygonArc();
+                    judgeisland();
+                    drawresult();
+                    convertTogrid();
+                }
+            }
+        }
+        function fillgrid(j, i, value) {
+            //对该行的所有像素填充
+            for (; j >= 0; j--) {
+                grid[i][j] += value;
+            }
+        }
+        function convertTogrid() {
+            //处理数据，创建结构其中包含所有边的左右多边形编号（含最外边的多边形），每条边的坐标点
+            for (var i = 0; i < arcpolytemp.length; i++) {
+                for (var j = 0; j < Node.length; j++) {
+                    if (arcpolytemp[i].start == j) {
+                        arcpolytemp[i].startpoint[0] = Node[j][0];
+                        arcpolytemp[i].startpoint[1] = Node[j][1];
+                    }
+                    if (arcpolytemp[i].end == j) {
+                        arcpolytemp[i].endpoint[0] = Node[j][0];
+                        arcpolytemp[i].endpoint[1] = Node[j][1];
+                    }
+                }
+            }
+            for (var j = 0; j < ArcNode.length; j++) {
+                for (var i = 0; i < arcpolytemp.length; i++) {
+                    if (arcpolytemp[i].startpoint[0] == ArcNode[j].start[0] && arcpolytemp[i].startpoint[1] == ArcNode[j].start[1] &&
+                        arcpolytemp[i].endpoint[0] == ArcNode[j].end[0] && arcpolytemp[i].endpoint[1] == ArcNode[j].end[1]) {
+                        arcpolyfinal.push({
+                            start: arcpolytemp[i].start,
+                            end: arcpolytemp[i].end,
+                            startpoint: arcpolytemp[i].startpoint,
+                            endpoint: arcpolytemp[i].endpoint,
+                            left: arcpolytemp[i].left,
+                            right: arcpolytemp[i].right,
+                            points: arcpolytemp[i].points,
+                        });
+                    }
+                }
+            }
+            arcpolytemp = [];
+            arcpolytemp = arcpolyfinal;
+            for (var i = 0; i < arcpolytemp.length; i++) {
+                for (var j = 0; j < ArcNode.length; j++) {
+                    if (arcpolytemp[i].startpoint[0] == ArcNode[j].start[0] && arcpolytemp[i].startpoint[1] == ArcNode[j].start[1] &&
+                        arcpolytemp[i].endpoint[0] == ArcNode[j].end[0] && arcpolytemp[i].endpoint[1] == ArcNode[j].end[1]) {
+                        for (var k = 0; k < ArcNode[j].points.length; k++) {
+                            arcpolytemp[i].points.push([
+                                ArcNode[j].points[k][0],
+                                ArcNode[j].points[k][1],
+                            ]);
+                        }
+                    }
+                    else if (arcpolytemp[i].startpoint[0] == ArcNode[j].end[0] && arcpolytemp[i].startpoint[1] == ArcNode[j].end[1] &&
+                        arcpolytemp[i].endpoint[0] == ArcNode[j].start[0] && arcpolytemp[i].endpoint[1] == ArcNode[j].start[1]) {
+                        for (var k = ArcNode[j].points.length - 1; k >= 0; k--) {
+                            arcpolytemp[i].points.push([
+                                ArcNode[j].points[k][0],
+                                ArcNode[j].points[k][1]
+                            ]);
+                        }
+                    }
+                }
+            }
+            for (var i = 0; i < arcpolytemp.length; i++) {
+                if (arcpolytemp[i].left == border.id) {
+                    arcpolytemp[i].left = -1;
+                }
+                // 对最外围的多边形做特殊处理，其值为0
+                if (arcpolytemp[i].right == border.id) {
+                    arcpolytemp[i].right = -1;
+                }
+            }
+            //将原本多边形排除掉最外界的多边形之后的其他多边形的多边形编号加以调整
+            for (var i = 0; i < arcpolytemp.length; i++) {
+                if (arcpolytemp[i].left > border.id) {
+                    arcpolytemp[i].left = arcpolytemp[i].left - 1;
+                }
+                if (arcpolytemp[i].right > border.id) {
+                    arcpolytemp[i].right = arcpolytemp[i].right - 1;
+                }
+            }
+            // 先将X,Y点的坐标转换为栅格所在的行列号,小数部分采用截断的方式
+            for (var i = 0; i < arcpolytemp.length; i++) {
+                arcpolytemp[i].startpoint[0] = Math.trunc(arcpolytemp[i].startpoint[0]);
+                arcpolytemp[i].startpoint[1] = Math.trunc(arcpolytemp[i].startpoint[1]);
+                arcpolytemp[i].endpoint[0] = Math.trunc(arcpolytemp[i].endpoint[0]);
+                arcpolytemp[i].endpoint[1] = Math.trunc(arcpolytemp[i].endpoint[1]);
+                for (var j = 0; j < arcpolytemp[i].points.length; j++) {
+                    arcpolytemp[i].points[j][0] = Math.trunc(arcpolytemp[i].points[j][0]);
+                    arcpolytemp[i].points[j][1] = Math.trunc(arcpolytemp[i].points[j][1]);
+                }
+            }
+            //依次扫描各边，判断当边界弧段上行时，该弧段与左图框之间栅格增加一个值（左多边形减去右多边形）
+            // 当边界弧段下行时，该弧段与左图框之间的栅格增加一个值（右多边形编号减去左多边形编号）
+            for (var i = 0; i < arcpolytemp.length; i++) {
+                for (var j = 0; j < arcpolytemp[i].points.length - 1; j++) {
+                    if (arcpolytemp[i].points[j][1] - arcpolytemp[i].points[j + 1][1] > 0) {//弧段下行
+                        var value = (arcpolytemp[i].right + 1) - (arcpolytemp[i].left + 1);
+                    }
+                    else if (arcpolytemp[i].points[j][1] - arcpolytemp[i].points[j + 1][1] < 0) {//弧段上行
+                        var value = (arcpolytemp[i].left + 1) - (arcpolytemp[i].right + 1);
+                    }
+                    else {
+                        continue;
+                    }
+                    var startx = arcpolytemp[i].points[j][0];
+                    var starty = arcpolytemp[i].points[j][1];
+                    var endx = arcpolytemp[i].points[j + 1][0];
+                    var endy = arcpolytemp[i].points[j + 1][1];
+                    var dy = arcpolytemp[i].points[j + 1][1] - arcpolytemp[i].points[j][1];
+                    var dx = arcpolytemp[i].points[j + 1][0] - arcpolytemp[i].points[j][0];
+                    var max, xincre, yincre;
+                    //判断斜率以判断下一个点的坐标，利用数值微分法
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        max = Math.abs(dx);//k属于-1到1的情况
+                    }
+                    else {
+                        max = Math.abs(dy);//k<-1或者k>1
+                    }
+                    xincre = dx / max;
+                    yincre = dy / max;
+                    var A = endy - starty;
+                    var B = startx - endx;
+                    var C = endx * starty - startx * endy;
+                    if (starty <= endy) {
+                        for (var k = starty; k <= endy; k++) {
+                            startx = parseInt((-B * k  -C) / A);
+                            fillgrid(startx, k, value);
+                        }
+                    }
+                    else {
+                        for (var t = starty; t >= endy; t--) {
+                     
+                            startx = parseInt((-B * t -C) / A);
+                            fillgrid(startx, t, value);
+                        }
+                    }
+                }
+            }
+            // 根据得到的二维数组进行填充，若数值为0，则不予以填充，若数值非零则填充相应的颜色
+            var color = ["yellow", "blue","orange","green", "pink",  "red","gray",  "lightblue", "black","lightgreen" ];
+            for (var i = 0; i < grid.length; i++) {
+                for (var j = 0; j < grid[i].length; j++) {
+                    if (grid[i][j] != 0) {
+                        ctext2.beginPath();
+                        ctext2.fillStyle = color[grid[i][j]];
+                        ctext2.fillRect(j * times - 20, (canvas2.height - i * times) + 150, 1, 1);
+                        ctext2.stroke();
+                    }
+                }
+            }
+        }
+        function drawpoint() {
+            for (var i = 0; i < Node.length; i++) {
+                ctext1.beginPath();
+                ctext1.fillStyle = "red";
+                var x0 = Node[i][0] * times - 10;
+                var y0 = (canvas1.height - Node[i][1]) * times + 40 + 1;
+                ctext1.arc(x0, y0, 3, 0, Math.PI * 2, true);
+                ctext1.fill();
+                ctext1.font = "15px 宋体";
+                var text = i + 1;
+                text = "N" + text.toString();
+                ctext1.fillStyle = "black";
+                ctext1.fillText(text, x0, y0);
+            }
+            ctext1.stroke();
+        }
+        function drawresult() {
+            var text = document.getElementById('node');
+            text.innerHTML += "<br/>";
+            text.innerHTML += "ID" + "&nbsp" + "POINT" + "<br/>";
+            for (var i = 0; i < Node.length; i++) {
+                text.innerHTML += "N" + (i + 1);
+                text.innerHTML += "&nbsp";
+                text.innerHTML += "(" + Node[i][0] + "," + Node[i][1] + ")";
+                text.innerHTML += "<br/>";
+            }
+            for (var i = 0; i < ArcNode.length; i++) {
+                //找到x,y对应的编号
+                var startx = ArcNode[i].start[0];
+                var starty = ArcNode[i].start[1];
+                var endx = ArcNode[i].end[0];
+                var endy = ArcNode[i].end[1];
+                var restart, reend;
+                for (var j = 0; j < Node.length; j++) {
+                    if (startx == Node[j][0] && starty == Node[j][1]) {
+                        restart = j;
+                        break;
+                    }
+                }
+                for (var j = 0; j < Node.length; j++) {
+                    if (endx == Node[j][0] && endy == Node[j][1]) {
+                        reend = j;
+                        break;
+                    }
+                }
+                ArcNodefinal.push({
+                    id: ArcNode[i].id,
+                    startid: restart,
+                    endid: reend,
+                })
+            }
+            text = document.getElementById('arcnode');
+            text.innerHTML += "<br/>";
+            text.innerHTML += "ARC" + "&nbsp" + "&nbsp" + "POINT" + "<br/>";
+            for (var i = 0; i < ArcNodefinal.length; i++) {
+                text.innerHTML += "N" + (ArcNodefinal[i].startid + 1);
+                text.innerHTML += "N" + (ArcNodefinal[i].endid + 1);
+                text.innerHTML += "&nbsp&nbsp";
+                text.innerHTML += "N" + (ArcNodefinal[i].startid + 1) + ",";
+                text.innerHTML += "N" + (ArcNodefinal[i].endid + 1);
+                text.innerHTML += "<br/>";
+            }
+            text = document.getElementById('nodearc');
+            text.innerHTML += "<br/>";
+            text.innerHTML += "POINT" + "&nbsp" + "&nbsp" + "ARC" + "<br/>";
+            for (var i = 0; i < NodeArc.length; i++) {
+                text.innerHTML += "N" + (NodeArc[i].id + 1);
+                text.innerHTML += "&nbsp&nbsp";
+                text.innerHTML += "(";
+                for (var j = 0; j < NodeArc[i].arc.length; j++) {
+                    for (var k = 0; k < ArcNodefinal.length; k++) {
+                        if (NodeArc[i].arc[j] == ArcNodefinal[k].id) {
+                            text.innerHTML += "N" + (ArcNodefinal[k].startid + 1) + "N" + (ArcNodefinal[k].endid + 1);
+                            if (j != NodeArc[i].arc.length - 1) {
+                                text.innerHTML += ",";
+                            }
+                        }
+                    }
+                }
+                text.innerHTML += ")";
+                text.innerHTML += "<br/>";
+            }
+            text = document.getElementById('polyarc');
+            text.innerHTML += "<br/>";
+            text.innerHTML += "POLY" + "&nbsp" + "&nbsp" + "ARC" + "<br/>";
+            for (var i = 0; i < PolygonArc.length; i++) {
+                text.innerHTML += "A" + (PolygonArc[i].id + 1);
+                text.innerHTML += "&nbsp&nbsp";
+                text.innerHTML += "(";
+                for (var j = 0; j < PolygonArc[i].arc.length - 1; j = j + 2) {
+                    text.innerHTML += "N" + (PolygonArc[i].arc[j] + 1) + "N" + (PolygonArc[i].arc[j + 1] + 1);
+                    if (j != PolygonArc[i].arc.length - 2) {
+                        text.innerHTML += ",";
+                    }
+                }
+                text.innerHTML += ")";
+                text.innerHTML += "<br/>";
+            }
+            //岛的部分
+            if (island.length != 0) {
+                text = document.getElementById('island');
+                text.innerHTML += "<br/>";
+                text.innerHTML += "岛" + "&nbsp" + "&nbsp" + "包含它的多边形" + "<br/>";
+                island.sort(function (a, b) {
+                    return a[0] - b[0];
+                })
+                for (var i = 0; i < island.length; i++) {
+                    text.innerHTML += "A" + island[i][0];
+                    text.innerHTML += "&nbsp&nbsp";
+                    text.innerHTML += "A" + island[i][1];
+                    text.innerHTML += "<br/>";
+                }
+            }
+            else {
+                text = document.getElementById('island');
+                text.innerHTML += "<br/>";
+                text.innerHTML += "<br/>";
+                text.innerHTML += "此多边形不包含岛";
+            }
+            //弧段-多边形表
+            text = document.getElementById('arcpoly');
+            text.innerHTML += "<br/>";
+            text.innerHTML += "Arc" + "&nbsp" + "&nbsp" + "右多边形" + "&nbsp" + "&nbsp" + "左多边形" + "<br/>";
+            for (var i = 0; i < PolygonArc.length; i++) {
+                for (var j = 0; j < PolygonArc[i].arc.length; j = j + 2) {
+                    text.innerHTML += "N" + (PolygonArc[i].arc[j] + 1) + "N" + (PolygonArc[i].arc[j + 1] + 1);
+                    text.innerHTML += "&nbsp&nbsp&nbsp";
+                    text.innerHTML += "A" + (PolygonArc[i].id + 1);
+                    text.innerHTML += "&nbsp&nbsp&nbsp";
+                    var record = 0;
+                    for (var k = 0; k < PolygonArc.length; k++) {
+                        for (var t = 0; t < PolygonArc[k].arc.length; t = t + 2) {
+                            if (PolygonArc[i].arc[j] == PolygonArc[k].arc[t + 1] && PolygonArc[i].arc[j + 1] == PolygonArc[k].arc[t]) {
+                                text.innerHTML += "A" + (PolygonArc[k].id + 1);
+                                record = PolygonArc[k].id;
+                            }
+                        }
+                    }
+                    text.innerHTML += "<br/>";
+                    arcpolytemp.push({
+                        start: PolygonArc[i].arc[j],
+                        end: PolygonArc[i].arc[j + 1],
+                        right: PolygonArc[i].id,
+                        left: record,
+                        startpoint: [0, 0],
+                        endpoint: [0, 0],
+                        points: [],
+                    })
+                }
+            }
+        }
+        //将结点弧段表中的每个结点对应的弧段按角度的大小排序，以便构建左转算法
+        function SortNodeArc() {
+            for (var i = 0; i < NodeArc.length; i++) {
+                var lines = [];
+                var arcs = NodeArc[i].arc;
+                var pointTemp = NodeArc[i].point;
+                for (var j = 0; j < arcs.length; j++) {
+                    var index = arcs[j];
+                    if (pointTemp[0] == ArcNode[index].start[0] && pointTemp[1] == ArcNode[index].start[1]) {
+                        var lineTemp = {
+                            id: ArcNode[index].id,
+                            start: pointTemp,
+                            next: ArcNode[index].points[1],
+                            angle: 0//角度
+                        }
+                        lines.push(lineTemp);
+                    }
+                    else if (pointTemp[0] == ArcNode[index].end[0] && pointTemp[1] == ArcNode[index].end[1]) {
+                        var lineTemp = {
+                            id: ArcNode[index].id,
+                            start: pointTemp,
+                            next: ArcNode[index].points[ArcNode[index].points.length - 2],
+                            angle: 0//角度
+                        }
+                        lines.push(lineTemp);
+                    }
+                }
+                //按角度大小以此排序
+                for (var k = 0; k < lines.length; k++) {
+                    var xtemp = lines[k].next[0] - lines[k].start[0];
+                    var ytemp = lines[k].next[1] - lines[k].start[1];
+                    var tan = ytemp / xtemp;
+                    var angle = Math.atan(tan) * 180 / Math.PI;
+                    if (xtemp < 0 && ytemp >= 0) {
+                        angle += 180;
+                    }
+                    if (xtemp < 0 && ytemp < 0) {
+                        angle += 180;
+                    }
+                    if (xtemp >= 0 && ytemp < 0) {
+                        angle += 360;
+                    }
+                    lines[k].angle = angle;
+                }
+                lines.sort(function (a, b) {
+                    return a.angle - b.angle;
+                });//将各弧段按角度排序
+                NodeArc[i].arc = [];
+                for (var t = 0; t < lines.length; t++) {
+                    NodeArc[i].arc.push(lines[t].id);
+                }
+            }
+        }
+        function LeftTurnAlgorithm() {
+            var finalTemp = [];
+            for (var i = 0; i < NodeArc.length; i++) {
+                finalTemp = [];//一个结点寻找完毕开始寻找下一个结点的路径之前先置空
+                var p = NodeArc[i].point;//起点
+                var nextpoint = [];
+                //以第一个结点作为起始结点
+                for (var j = 0; j < NodeArc[i].arc.length; j++) {
+                    var index = NodeArc[i].arc[j];
+                    //若该结点为弧段的起点，且该弧段正向没有被遍历过，则下一个结点则为该弧段的终点，正向遍历该弧段
+                    if (p[0] == ArcNode[index].start[0] && p[1] == ArcNode[index].start[1] && ArcNode[index].forward == false) {
+                        nextpoint = ArcNode[index].end;
+                        ArcNode[index].forward = true;
+                        finalTemp.push({
+                            id: ArcNode[index].id,
+                            direction: "forward"
+                        })
+                        break;
+                    }
+                    //若该结点为弧段的终点，且该弧段逆向没有被遍历，则弧段的起点则为下一个结点
+                    else if (p[0] == ArcNode[index].end[0] && p[1] == ArcNode[index].end[1] && ArcNode[index].reverse == false) {
+                        nextpoint = ArcNode[index].start;
+                        ArcNode[index].reverse = true;
+                        finalTemp.push({
+                            id: ArcNode[index].id,
+                            direction: "reverse"
+                        })
+                        break;
+                    }
+                }
+                if (j == NodeArc[i].arc.length) {//若上述两种情况均不满足，唯一的可能是所有的弧段正向和逆向均被遍历完，此时则需寻找下一个结点作为起始结点
+                    continue;
+                }
+                var nextindex;
+                while (1) {
+                    while (nextpoint[0] != p[0] || nextpoint[1] != p[1]) {
+                        for (var t = 0; t < NodeArc.length; t++) {
+                            if (nextpoint[0] == NodeArc[t].point[0] && nextpoint[1] == NodeArc[t].point[1]) {
+                                break;
+                            }
+                        }
+                        for (var k = 0; k < NodeArc[t].arc.length; k++) {
+                            if (NodeArc[t].arc[k] == index) {//等于上一条弧段
+                                nextindex = (k + 1) % NodeArc[t].arc.length;
+                                break;
+                            }
+                        }
+                        index = NodeArc[t].arc[nextindex];
+                        if (nextpoint[0] == ArcNode[index].start[0] && nextpoint[1] == ArcNode[index].start[1] && ArcNode[index].forward == false) {
+                            nextpoint = ArcNode[index].end;
+                            ArcNode[index].forward = true;
+                            finalTemp.push({
+                                id: ArcNode[index].id,
+                                direction: "forward"
+                            })
+                        }
+                        //若该结点为弧段的终点，且该弧段逆向没有被遍历，则弧段的起点则为下一个结点
+                        else if (nextpoint[0] == ArcNode[index].end[0] && nextpoint[1] == ArcNode[index].end[1] && ArcNode[index].reverse == false) {
+                            nextpoint = ArcNode[index].start;
+                            ArcNode[index].reverse = true;
+                            finalTemp.push({
+                                id: ArcNode[index].id,
+                                direction: "reverse"
+                            })
+                        }
+                    }
+                    //若nextpoint==p则证明回到了起点，此时一个多边形构建完毕
+                    PolygonArc.push(finalTemp);
+                    var final = finalTemp[finalTemp.length - 1].id;
+                    finalTemp = [];
+                    //若最后一条弧段的正向逆向均被遍历，则开始寻找下一个结点作为起始结点
+                    if (ArcNode[final].forward == true && ArcNode[final].reverse == true) {
+                        break;
+                    }
+                    if (p[0] == ArcNode[final].start[0] && p[1] == ArcNode[final].start[1] && ArcNode[final].forward == false) {
+                        ArcNode[final].forward = true;
+                        nextpoint = ArcNode[final].end;
+                        finalTemp.push({
+                            id: ArcNode[final].id,
+                            direction: "forward"
+                        })
+                    }
+                    else if (p[0] == ArcNode[final].end[0] && p[1] == ArcNode[final].end[1] && ArcNode[final].reverse == false) {
+                        ArcNode[final].reverse = true;
+                        nextpoint = ArcNode[final].start;
+                        finalTemp.push({
+                            id: ArcNode[final].id,
+                            direction: "reverse"
+                        })
+                    }
+                }
+            }
+        }
+        function CreatePolygonArc() {
+            for (var i = 0; i < PolygonArc.length; i++) {
+                var arctemp = [];
+                var temp = [];
+                for (var j = 0; j < PolygonArc[i].length; j++) {
+                    var index = PolygonArc[i][j].id;
+                    var direction = PolygonArc[i][j].direction;
+                    if (direction == "forward") {
+                        for (var t = 0; t < Node.length; t++) {
+                            if (ArcNode[index].start[0] == Node[t][0] && ArcNode[index].start[1] == Node[t][1]) {
+                                arctemp.push(t);
+                                break;
+                            }
+                        }
+                        for (var t = 0; t < Node.length; t++) {
+                            if (ArcNode[index].end[0] == Node[t][0] && ArcNode[index].end[1] == Node[t][1]) {
+                                arctemp.push(t);
+                                break;
+                            }
+                        }
+                        for (var k = 0; k < ArcNode[index].points.length - 1; k++) {
+                            temp.push(ArcNode[index].points[k]);
+                        }
+                    }
+                    else if (direction == "reverse") {
+                        for (var t = 0; t < Node.length; t++) {
+                            if (ArcNode[index].end[0] == Node[t][0] && ArcNode[index].end[1] == Node[t][1]) {
+                                arctemp.push(t);
+                            }
+                        }
+                        for (var t = 0; t < Node.length; t++) {
+                            if (ArcNode[index].start[0] == Node[t][0] && ArcNode[index].start[1] == Node[t][1]) {
+                                arctemp.push(t);
+                            }
+                        }
+                        for (var k = ArcNode[index].points.length - 1; k > 0; k--) {
+                            temp.push(ArcNode[index].points[k]);
+                        }
+                    }
+                }
+                temp.push(temp[0]);
+                PolygonArcTemp.push(temp);
+                PolygonArc[i] = [];
+                PolygonArc[i] = {
+                    id: i,
+                    arc: arctemp,
+                }
+            }
+        }
+        function calculateArea(data) {
+            var s = 0;
+            for (var i = 0; i < data.length; i++) {
+                s += data[i][0] * data[(i + 1) % data.length][1] - data[(i + 1) % data.length][0] * data[i][1];
+            }
+            return -s / 2;
+        }
+        //判断一个点是否在多边形内
+        function pointIspoly(point, poly) {
+            var px = [], py = [];
+            for (var i = 0; i < poly.length; i++) {
+                px.push(poly[i][0]);
+                py.push(poly[i][1]);
+            }
+            px.sort(function (a, b) {
+                return a - b;
+            })
+            py.sort(function (a, b) {
+                return a - b;
+            })
+            //首先判断点是否位于多边形的最小外接矩形之内，若不满足则无需进行下面的判断
+            var maxx = px[px.length - 1];
+            var minx = px[0];
+            var maxy = py[py.length - 1];
+            var miny = py[0];
+            if (point[0] < minx || point[0] > maxx || point[1] < miny || point[1] > maxy) {
+                return false;
+            }
+            var num = 0;
+            var pointtemp = [maxx + 100, point[1]];//相当于射线
+            for (var i = 0; i < poly.length - 1; i++) {
+                var point1 = poly[i];
+                var point2 = poly[i + 1];
+                if (mult(point1, pointtemp, point) * mult(pointtemp, point2, point) >= 0
+                    && mult(point, point2, point1) * mult(point2, pointtemp, point1) >= 0) {
+                    num++;
+                }
+            }
+            //射线与多边形的交点为偶数个则在多边形内
+            if ((num % 2) != 0) {
+                return true;
+            }
+            //若为奇数个则不再多边形内
+            return false;
+        }
+        //计算叉积的公式
+        function mult(a, b, c) {
+            return (a[0] - c[0]) * (b[1] - c[1]) - (b[0] - c[0]) * (a[1] - c[1]);
+        }
+        function judgeisland() {
+            var areaTemp = [];
+            //以此计算所有多边形的面积
+            for (var i = 0; i < PolygonArcTemp.length; i++) {
+                var area = calculateArea(PolygonArcTemp[i]);
+                areaTemp.push({
+                    id: i,
+                    area: area
+                })
+            }
+            //将多边形的面积按从小到大排序，其中值得注意的是外部多边形的面积最大，且为负值
+            areaTemp.sort(function (a, b) {
+                return a.area - b.area;
+            })
+            var islandtemp = [];//负多边形集合（不包括外围多边形）
+            var areaplus = [];//正多边形集合
+            //排序之后面积最大的一定为外部多边形
+            border = {
+                id: areaTemp[0].id,
+                points: PolygonArcTemp[areaTemp[0].id],
+            }
+            for (var i = 1; i < areaTemp.length; i++) {
+                if (areaTemp[i].area > 0) {
+                    for (var j = i; j < areaTemp.length; j++) {
+                        areaplus.push({
+                            id: areaTemp[j].id,
+                            area: areaTemp[j].area
+                        })
+                    }
+                    break;//面积按从小到大的顺序排列，若有面积大于0则之后的面积一定大于0
+                }
+                if (areaTemp[i].area < 0) {
+                    islandtemp.push({
+                        id: areaTemp[i].id,
+                        area: areaTemp[i].area
+                    })
+                }
+            }
+            if (islandtemp.length != 0) {
+                islandtemp.sort(function (a, b) {
+                    return a.id - b.id;
+                })
+                areaplus.sort(function (a, b) {
+                    return a.id - b.id;
+                })
+                //依次从正多边形中抽出一个多边形，并遍历所有的负多边形，判断正多边形是否包含该负多边形
+                for (var i = 0; i < areaplus.length; i++) {
+                    for (var j = 0; j < islandtemp.length; j++) {
+                        //相交的第一个条件：正多边形的面积大于负多边形面积的绝对值
+                        if ((Math.abs(areaplus[i].area) - Math.abs(islandtemp[j].area)) > 0) {
+                            //相交的第二个条件：正多边形与负多边形的外接矩形相交
+                            var maxX1 = 0, maxY1 = 0, minX1 = 999, minY1 = 999;
+                            var maxX2 = 0, maxY2 = 0, minX2 = 999, minY2 = 999;
+                            for (var k = 0; k < PolygonArcTemp[areaplus[i].id].length; k++) {
+                                if (PolygonArcTemp[areaplus[i].id][k][0] >= maxX1) {
+                                    maxX1 = PolygonArcTemp[areaplus[i].id][k][0];
+                                }
+                                if (PolygonArcTemp[areaplus[i].id][k][1] >= maxY1) {
+                                    maxY1 = PolygonArcTemp[areaplus[i].id][k][1];
+                                }
+                                if (PolygonArcTemp[areaplus[i].id][k][0] <= minX1) {
+                                    minX1 = PolygonArcTemp[areaplus[i].id][k][0];
+                                }
+                                if (PolygonArcTemp[areaplus[i].id][k][1] <= minY1) {
+                                    minY1 = PolygonArcTemp[areaplus[i].id][k][1];
+                                }
+                            }
+                            for (var k = 0; k < PolygonArcTemp[islandtemp[j].id].length; k++) {
+                                if (PolygonArcTemp[islandtemp[j].id][k][0] >= maxX2) {
+                                    maxX2 = PolygonArcTemp[islandtemp[j].id][k][0];
+                                }
+                                if (PolygonArcTemp[islandtemp[j].id][k][1] >= maxY2) {
+                                    maxY2 = PolygonArcTemp[islandtemp[j].id][k][1];
+                                }
+                                if (PolygonArcTemp[islandtemp[j].id][k][0] <= minX2) {
+                                    minX2 = PolygonArcTemp[islandtemp[j].id][k][0];
+                                }
+                                if (PolygonArcTemp[islandtemp[j].id][k][1] <= minY2) {
+                                    minY2 = PolygonArcTemp[islandtemp[j].id][k][1];
+                                }
+                            }
+                            var minx = Math.max(minX1, minX2);
+                            var miny = Math.max(minY1, minY2);
+                            var maxx = Math.min(maxX1, maxX2);
+                            var maxy = Math.min(maxY1, maxY2);
+                            if ((minx > maxx || miny > maxy) != 1) {//满足该条件则两个外接矩形相交
+                                var record = pointIspoly(PolygonArcTemp[islandtemp[j].id][0], PolygonArcTemp[areaplus[i].id]);
+                                if (record == true) {
+                                    //island存储岛的多边形id(是负值)
+                                    island.push([islandtemp[j].id, areaplus[i].id])
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        //判断结点-弧段表中是否有该point
+        function Check(temp, point) {
+            for (var i = 0; i < temp.length; i++) {
+                if (temp[i].point[0] == point[0] && temp[i].point[1] == point[1]) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+        function draw(record)//画地图
+        {
+            var name = record.split('\r\n');
+            var start = false;//用于寻找起点,start为真时表示起点
+            ctext1.lineWidth = 1;//设置画笔的宽度和颜色
+            ctext1.strokeStyle = "black";
+            //开始读取文件
+            var id = -1;
+            for (var i = 0; i < name.length; i++) {
+                if (name[i] == 'END' && name[i - 1] != 'END') {
+                    point = name[i - 1].split(',');
+                    point[0] = parseFloat(point[0]); // 注意数值类型的转换
+                    point[1] = parseFloat(point[1]);
+                    templine.end = point;
+                    ArcNode.push(templine);
+                    ctext1.stroke();
+                    //若遇到‘end’则结束该条线段的绘制，并且将start重置为true
+                    start = false;
+                    var index = Check(NodeArc, point);
+                    if (index == -1) {//结点-弧段表中没有该点
+                        Node.push(point);
+                        var point = {
+                            id: NodeArc.length,//编号
+                            point: point,//结点的坐标
+                            arc: [id],//弧段的id号
+                        }
+                        NodeArc.push(point);
+                    }
+                    else {
+                        NodeArc[index].arc.push(id);//如果该结点已经存在，则把该弧段加入arc中
+                    }
+                    continue;
+                }
+                var point = name[i].split(',');//坐标中去除“，”成为point数组
+                if (point.length < 2)//此条件判断是L1还是坐标对，L1经过split函数处理后长度为1
+                {
+                    start = true;//找到“L1”表明找到了起点
+                    id = parseInt(point[0]) - 1;
+                    var templine = {//弧段
+                        id: parseInt(point[0]) - 1,//id编码
+                        start: null,//起点
+                        end: null,//终点
+                        points: [],//该弧段包含的所有点
+                        forward: false,
+                        reverse: false,//表示该弧段正向与逆向是否被遍历
+                    };
+                    continue;//继续寻找起始坐标
+                }
+                if (start) {//若start为真则表明为起点，用moveTo()函数
+                    point[0] = parseFloat(point[0]); // 注意数值类型的转换
+                    point[1] = parseFloat(point[1]);
+                    var x0 = point[0] * times - 10;
+                    var y0 = (canvas1.height - point[1]) * times + 40 + 1;
+                    ctext1.beginPath();
+                    ctext1.moveTo(x0, y0);
+                    start = false;//表示已经过了起点点
+                    templine.start = point;
+                    templine.points.push(point);//将起点和点加入弧段中
+                    var index = Check(NodeArc, point);
+                    if (index == -1) {//结点-弧段表中没有该点
+                        Node.push(point);//将该点存入结点表中
+                        var point = {
+                            id: NodeArc.length,//编号
+                            point: point,//结点的坐标
+                            arc: [id],//弧段的id号
+                        }
+                        NodeArc.push(point);
+                    }
+                    else {
+                        NodeArc[index].arc.push(id);//如果该结点已经存在，则把该弧段加入arc中
+                    }
+                }
+                else {
+                    point[0] = parseFloat(point[0]); // 注意数值类型的转换
+                    point[1] = parseFloat(point[1]);
+                    var x1 = point[0] * times - 10 + 1;
+                    var y1 = (canvas1.height - point[1]) * times + 40 + 1;
+                    ctext1.lineTo(x1, y1);
+                    start = false;
+                    templine.points.push(point);
+                }
+            }
+        }
+        function ClearCanvas() {
+            ctext1.clearRect(0, 0, canvas1.width, canvas1.height);
+            ctext2.clearRect(0, 0, canvas2.width, canvas2.height);
+        }
+    </script>
+</body>
+
+</html>
